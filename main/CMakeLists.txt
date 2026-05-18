@@ -1,0 +1,16 @@
+idf_component_register(
+    SRCS 
+        "main.c" 
+        "parts_config/motor.c"  
+        "parts_config/i2c_expander.c" 
+        "parts_config/ultrasonic.c"  
+        "parts_config/adc_read.c"
+    INCLUDE_DIRS 
+        "includes"     
+        "."           
+    REQUIRES 
+        driver    
+        esp_timer    
+        freertos
+        esp_adc      
+)
