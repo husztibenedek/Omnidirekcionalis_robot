@@ -2,14 +2,17 @@
 #define I2C_EXPANDER_H
 
 //library-s
-#include <stdio.h>
 #include "ultrasonic.h"
-#include "esp_err.h"
+
+#include <stdio.h>
+#include <stdbool.h>
 #include "driver/gpio.h"
 #include "driver/i2c_master.h"
 #include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-
+#include "esp_log.h"
+#include "esp_err.h"
+#include "esp_timer.h"
+#include "rom/ets_sys.h"
   
 
 //BUS settings
@@ -21,7 +24,7 @@
 
     #define I2C_Glitch_Ignore_Cnt 7
 
-    extern i2c_master_bus_handle_t bus_handle;
+    extern i2c_master_bus_handle_t I2CBus_handle;
     //IT port
     #define IT_pin_num  GPIO_NUM_14
     
@@ -31,9 +34,9 @@
     #define I2C_Led_Address 0x21
     #define I2C_Scl_FreqHz 100000
 
-    extern i2c_master_dev_handle_t dev_handle_W; //write
-    extern i2c_master_dev_handle_t dev_handle_R; //read
-    
+    extern i2c_master_dev_handle_t I2C_LED_Handle; //write
+    extern i2c_master_dev_handle_t I2C_Button_Handle; //read
+    #define volatile int robot_id
 
 //Leds
     #define LedHeart GPIO_NUM_15 //Heart Led
@@ -42,6 +45,7 @@
     #define led3 0x04
     #define led4 0x08
     #define led5 0x10
+    #define allLed 0x1F
     
 //Buttons && Switches
 
@@ -73,11 +77,12 @@
     extern ultrasonic_sensor_t UV_sensor3;
 
 //fuggvenyek
-    void initExpander(void); //port bovito
-    void init_Button_IT(gpio_num_t IT_pin);
-    esp_err_t expander_set_gpio_level(i2c_master_dev_handle_t dev, uint8_t bit_mask, bool level);
-    void readButtons(uint8_t *button);
-    static void button_task(void *pvParam);
-    uint8_t readbyte();
-    
+    void InitExpander(void); //port bovito
+    void InitButtonIT(gpio_num_t IT_pin);
+    esp_err_t expander_set_gpio_level(uint8_t bit_mask, bool level);
+    void ReadButtons(uint8_t *button);
+    uint8_t ReadSwitches();
+    void button_task(void *pvParam);
+    uint8_t ReadI2C();
+    esp_err_t LedOnOff(int led_number, bool state);
 #endif
