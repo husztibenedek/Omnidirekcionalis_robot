@@ -7,8 +7,10 @@
 #include "driver/mcpwm_cap.h"
 #include "driver/i2c_master.h"
 #include "esp_err.h"
+#include "esp_log.h"
 #include "freertos/FreeRTOS.h"
-#include "freertos/semphr.h"
+#include "rom/ets_sys.h" // ets_delay_us-hez
+
 
 #define ROUNDTRIP_CM 58 
 #define Mhz_oszto 80
@@ -25,18 +27,21 @@ typedef struct {
 
         uint32_t down_edge;
         uint32_t start_edge;     
-        volatile uint32_t distance;
+        volatile float distance;
+        volatile bool in_reach;
 
-        //megszakításhoz
-        TaskHandle_t mes_handle_t;    
-        
-    }ultrasonic_sensor_t;  
+}ultrasonic_sensor_t;  
+
+// Változók
+extern ultrasonic_sensor_t UV_sensor1;
+extern ultrasonic_sensor_t UV_sensor2;
+extern ultrasonic_sensor_t UV_sensor3;
 
 
 //Függvények
-    esp_err_t initUltraSensor(ultrasonic_sensor_t *sensor,i2c_master_dev_handle_t dev_handleW, gpio_num_t echo_pin, uint8_t trigger_pin);
-    esp_err_t ultrasonic_trigger(const ultrasonic_sensor_t *sensor);
-    esp_err_t ultrasonic_measure_cm(const ultrasonic_sensor_t *sensor,uint32_t *distance_cm);
-    void ultrasonic_task(void *pvParameters);
+    void initUltraSenzors();
+    esp_err_t InitUltraSensor(ultrasonic_sensor_t *sensor, gpio_num_t echo_pin, uint8_t trigger_pin);
+    esp_err_t UltrasonicTrigger(const ultrasonic_sensor_t *sensor);
+    esp_err_t UltrasonicMeasure(ultrasonic_sensor_t *pvParameters);
 
 #endif // ULTRASONIC_H
