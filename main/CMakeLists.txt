@@ -4,7 +4,10 @@ idf_component_register(
         "parts_config/motor.c"  
         "parts_config/i2c_expander.c" 
         "parts_config/ultrasonic.c"  
-        "parts_config/adc_read.c"
+        "parts_config/battery_read.c"
+        "parts_config/led.c"
+        "parts_config/button_switch.c"
+        "parts_config/controller.c"
     INCLUDE_DIRS 
         "includes"     
         "."           
