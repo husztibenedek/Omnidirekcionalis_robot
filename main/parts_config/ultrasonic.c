@@ -1,56 +1,50 @@
-#include <stdio.h>
 #include "ultrasonic.h"
-#include "rom/ets_sys.h" // ets_delay_us-hez
-#include "esp_log.h"
-#include "esp_attr.h"
-#include "freertos/FreeRTOS.h" 
-#include "freertos/task.h"
 #include "i2c_expander.h"
 
-extern volatile bool meres_aktiv;
-static const char *TAG = "UV_SZENZOR";
 
+
+extern bool meres_aktiv;
 ultrasonic_sensor_t UV_sensor1;
-//ultrasonic_sensor_t UV_sensor2;
-//ultrasonic_sensor_t UV_sensor3;
+ultrasonic_sensor_t UV_sensor2;
+ultrasonic_sensor_t UV_sensor3;
+extern i2c_master_dev_handle_t I2C_LED_Handle;
 
-
-static bool IRAM_ATTR capture_pulse(mcpwm_cap_channel_handle_t cap_chan, const mcpwm_capture_event_data_t *edata, void *user_data) {
+/**
+ * Captures the pulse length
+ * @param channel used for sending and receiving pulse
+ * @brief MCPWM capture event data
+ * @param user data for saved for measurments
+ * @return if the capture was succesful or not
+*/
+static bool IRAM_ATTR CapturePulse(mcpwm_cap_channel_handle_t cap_chan, const mcpwm_capture_event_data_t *edata, void *user_data) {
     ultrasonic_sensor_t *sensor = (ultrasonic_sensor_t *) user_data; // void átkasztolása -> void* univerzális típus változó  
-    //
-    BaseType_t high_task_wp = pdFALSE;
-    
-    
+
     //      Felfutó él (0 -> 1)
     if(edata->cap_edge == MCPWM_CAP_EDGE_POS){
         sensor->start_edge = edata->cap_value;
+        sensor->in_reach = false;
     }
     //      Lefutó él ( 1 -> 0)
     else{
-        uint32_t dist = (edata->cap_value - sensor->start_edge) / Mhz_oszto;
-        sensor->distance = dist / ROUNDTRIP_CM; 
-
-        // IT task jelez a mainbe hogy kész
-        if(sensor->mes_handle_t != NULL){
-            vTaskNotifyGiveFromISR(sensor->mes_handle_t, &high_task_wp);
-        }
+        sensor->down_edge = edata->cap_value; 
+        sensor->in_reach = true;   
     }
-    //megvizsgálni, hogy a megszakítás során a high_task_wp értéke igazzá (pdTRUE) vált-e, és ezt az igaz/hamis eredményt akarjuk visszaadni.
-    return high_task_wp == pdTRUE;
+    return false;
 }
 
-// Az ultrahangos szenzor inicializálása
-    // Paraméterek:
-    // - &UV_sensor1: A szenzor struktúra címe
-    // - dev_handle_W: A portbővítő (író) azonosítója
-    // - GPIO_NUM_4: Az ESP32 fizikai lába, ahova az ECHO van kötve 
-    // - 5: A portbővítő lábának sorszáma vagy lába, ahova a TRIGGER van kötve
-esp_err_t initUltraSensor(ultrasonic_sensor_t *sensor,i2c_master_dev_handle_t dev_handleW, gpio_num_t echo_pin, uint8_t trigger_pin){
-    sensor->i2c_device = dev_handleW;
+/**
+ * Initializing Ultrassonic sensor
+ * @param sensor struct address
+ * @param port expansion tag
+ * @param ESP32 leg physical tag 
+ * @param port expander pin number or pin for TRIGGER connection
+ * @return esp_err_t ESP_OK on success, or an error code on failure
+ */  
+esp_err_t InitUltraSensor(ultrasonic_sensor_t *sensor, gpio_num_t echo_pin, uint8_t trigger_pin){
+    sensor->i2c_device = I2C_LED_Handle;
     sensor->echo_pin = echo_pin;
     sensor->trigger_pin =  trigger_pin;
     sensor->start_edge = 0;
-    sensor->mes_handle_t = NULL; 
 
     
 
@@ -76,63 +70,121 @@ esp_err_t initUltraSensor(ultrasonic_sensor_t *sensor,i2c_master_dev_handle_t de
     ESP_ERROR_CHECK(mcpwm_new_capture_channel(cap_timer,&chan_config,&sensor->cap_chan));
 
     //Megszakítás (Interrupt Callback) regisztráslása --> feszultseg ugras van akkor meghívja a capture_pulse fgv-t
-    mcpwm_capture_event_callbacks_t cbs = {.on_cap = capture_pulse};
+    mcpwm_capture_event_callbacks_t cbs = {.on_cap = CapturePulse};
     
     //mcpwm_capture_channel_register_event_callbacks(ahol valtozas nezzuk, cbs cime, amibe menteni akarom a mert adatot)
     ESP_ERROR_CHECK(mcpwm_capture_channel_register_event_callbacks(sensor->cap_chan,&cbs,sensor));
-
+    //Ultrahang senzor név kiosztás
     
+
     return mcpwm_capture_channel_enable(sensor->cap_chan);
 }
 
-esp_err_t ultrasonic_trigger(const ultrasonic_sensor_t *sensor){
+/**
+ * @brief Initializing Ultrassonic sensors (all 3)
+ */
+void initUltraSenzors(){
+
+    esp_err_t error = -1;
+    UV_sensor1.name = "Senzor_1";
+    error = InitUltraSensor(&UV_sensor1,UV_echo1, UV_trigger1); 
+    if(error == ESP_OK){
+        ESP_LOGI("Main" ,"UV_sensor1 inicializálva");
+
+        // A mérést végző Task elindítása    
+        // xTaskCreate(Függvény_neve, "Név", Stack_méret, paraméter(amit beküldünk a tasknak), Prioritás, Task_handle)
+        //xTaskCreate(UltrasonicTask,"Ultrasonic_Measure",4096, &UV_sensor1, 5, &UV_sensor1.mes_handle_t);
+        error = -1;
+    }
+    UV_sensor2.name = "Senzor_2";
+    error = InitUltraSensor(&UV_sensor2,UV_echo2, UV_trigger2);
+    if(error == ESP_OK){
+        ESP_LOGI("Main" ,"UV_sensor2 inicializálva");
+
+        // A mérést végző Task elindítása    
+        // xTaskCreate(Függvény_neve, "Név", Stack_méret, paraméter(amit beküldünk a tasknak), Prioritás, Task_handle)
+        //xTaskCreate(UltrasonicTask,"Ultrasonic_Measure",4096, &UV_sensor2, 5, &UV_sensor2.mes_handle_t);
+        error = -1;
+    }
+    UV_sensor3.name = "Senzor_3";
+    error = InitUltraSensor(&UV_sensor3,UV_echo3, UV_trigger3);
+    if(error == ESP_OK){
+        ESP_LOGI("Main" ,"UV_sensor3 inicializálva");
+
+        // A mérést végző Task elindítása    
+        // xTaskCreate(Függvény_neve, "Név", Stack_méret, paraméter(amit beküldünk a tasknak), Prioritás, Task_handle)
+        //xTaskCreate(UltrasonicTask,"Ultrasonic_Measure",4096, &UV_sensor3, 5, &UV_sensor3.mes_handle_t);
+        error = -1;
+    }
+}
+
+/**
+ * @brief Sets the trigger pulse for ultrasonic sensor to receive
+ * @param ID number of the u.sensor
+ * @return esp_err_t ESP_OK on success, or an error code on failure
+ */
+esp_err_t UltrasonicTrigger(const ultrasonic_sensor_t *sensor){
     if(sensor == NULL || sensor->i2c_device == NULL){
         return ESP_ERR_INVALID_ARG;
     }
-    esp_err_t data;
+    esp_err_t error;
 
     //trigger jel kuldes folymata alacsony -> magas -> alacsony
-    data = expander_set_gpio_level(sensor->i2c_device, sensor->trigger_pin, false);
-    if(data!= ESP_OK) return data;
+    error = expander_set_gpio_level(sensor->trigger_pin, false);
+    if(error!= ESP_OK) return error;
     ets_delay_us(2);
 
-    data = expander_set_gpio_level(sensor->i2c_device, sensor->trigger_pin, true);
-    if(data!= ESP_OK) return data;
+    error = expander_set_gpio_level(sensor->trigger_pin, true);
+    if(error!= ESP_OK) return error;
     ets_delay_us(10);
 
-    data = expander_set_gpio_level(sensor->i2c_device, sensor->trigger_pin, false);
-    if(data!= ESP_OK) return data;
+    error = expander_set_gpio_level(sensor->trigger_pin, false);
+    if(error!= ESP_OK) return error;
+    ets_delay_us(2);
 
     return ESP_OK;
 }
 
 
-esp_err_t ultrasonic_measure_cm(const ultrasonic_sensor_t *sensor,uint32_t *distance_cm){
-    if (sensor == NULL || distance_cm == NULL) {
+/**
+ * FreeRTOS task to periodically process and log ultrasonic sensor measurements
+ * 
+ * @param sensor Pointer to the ultrasonic_sensor_t configuration structure
+ */
+esp_err_t UltrasonicMeasure(ultrasonic_sensor_t *sensor){
+
+    if (sensor == NULL) {
+        vTaskDelete(NULL);
         return ESP_ERR_INVALID_ARG;
     }
-    uint32_t start = sensor->start_edge;
-    uint32_t down = sensor->down_edge;
     
-    uint32_t pulse_width = (down - start)/Mhz_oszto; // 80 MHz miatt kell leosztani
-    *distance_cm = pulse_width / ROUNDTRIP_CM;
+    
+        int timeout = 25;
+        if(UltrasonicTrigger(sensor) == ESP_OK){
+            while (!sensor->in_reach && timeout > 0) {
+                vTaskDelay(pdMS_TO_TICKS(1));
+                timeout--;
+            }   
 
-    return ESP_OK;
-}
-
-void ultrasonic_task(void *pvParameters){
-    ultrasonic_sensor_t *sensor = (ultrasonic_sensor_t *)pvParameters;
-    sensor->mes_handle_t = xTaskGetCurrentTaskHandle();
-    while(1){
-
-        if(ulTaskNotifyTake(pdTRUE,pdMS_TO_TICKS(50))){
-            ESP_LOGI(sensor->name,"Distance:  %.2f cm",sensor->distance);
+        // Túlcsordulás elleni védelem
+        if (sensor->down_edge < sensor->start_edge) {
+            sensor->distance = 0;
+            return ESP_ERR_INVALID_STATE; 
         }
+
+        if(sensor->in_reach){
+            float dist =(float)(sensor->down_edge-sensor->start_edge) / Mhz_oszto;
+            sensor->distance = dist / ROUNDTRIP_CM;
+            ESP_LOGI(sensor->name,"Distance:  %.2f cm",sensor->distance);
+            return ESP_OK;
+        }
+
         else{
             ESP_LOGW(sensor->name,"Error, no object in reach");
+            return ESP_ERR_TIMEOUT;
+            }
         }
-        vTaskDelay(pdMS_TO_TICKS(50));
-    }
+        return ESP_FAIL;
 }
 
 
